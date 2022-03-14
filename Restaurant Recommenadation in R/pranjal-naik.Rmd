@@ -1,0 +1,184 @@
+---
+title: "CS 422 - Assignment 9"
+output: 
+  html_notebook:
+    toc: yes
+    toc_float: yes
+author: Pranjal S Naik, Student - MS in CS 
+        Illinois Institute of Technology
+---
+
+### 2.1 - A
+```{r}
+library(arules)
+library(dplyr)
+
+products <- read.csv("products.csv", header = FALSE)
+colnames(products) <- c("ID", "Name")
+
+get_productName <- function(x){
+    res <- c()
+    for(item in x){
+      res <- append(res, as.character((subset(products, products$ID == item))$Name))
+    }
+    return(paste(res, collapse = ","))
+}
+
+tr1k <- read.csv("tr-1k.csv", header = FALSE, sep = ",", col.names = paste0("V",seq_len(max(count.fields("tr-1k.csv", sep = ',')))), fill = TRUE)
+tr5k <- read.csv("tr-5k.csv", header = FALSE, sep = ",", col.names = paste0("V",seq_len(max(count.fields("tr-5k.csv", sep = ',')))), fill = TRUE)
+tr20k <- read.csv("tr-20k.csv", header = FALSE, sep = ",", col.names = paste0("V",seq_len(max(count.fields("tr-20k.csv", sep = ',')))), fill = TRUE)
+tr75k <- read.csv("tr-75k.csv", header = FALSE, sep = ",", col.names = paste0("V",seq_len(max(count.fields("tr-75k.csv", sep = ',')))), fill = TRUE)
+
+tr1k <- tr1k[c(-1)]
+tr5k <- tr5k[c(-1)]
+tr20k <- tr20k[c(-1)]
+tr75k <- tr75k[c(-1)]
+
+tr1K <- apply(tr1k, 1, get_productName)
+tr5K <- apply(tr5k, 1, get_productName)
+tr20K <- apply(tr20k, 1, get_productName)
+tr75K <- apply(tr75k, 1, get_productName)
+
+write(tr1K, "tr-1k-canonical.csv")
+write(tr5K, "tr-5k-canonical.csv")
+write(tr20K, "tr-20k-canonical.csv")
+write(tr75K, "tr-75k-canonical.csv")
+
+```
+
+### 2.1 - B
+```{r}
+tr1KTransaction <- read.transactions("tr-1k-canonical.csv", format = "basket", sep = ",")
+tr5KTransaction <- read.transactions("tr-5k-canonical.csv", format = "basket", sep = ",")
+tr20KTransaction <- read.transactions("tr-20k-canonical.csv", format = "basket", sep = ",")
+tr75KTransaction <- read.transactions("tr-75k-canonical.csv", format = "basket", sep = ",")
+ 
+freqItemset1K <- apriori(tr1KTransaction, parameter=list(support = 0.01, target="frequent itemsets"))
+freqItemset5K <- apriori(tr5KTransaction, parameter=list(support = 0.01, target="frequent itemsets"))
+freqItemset20K <- apriori(tr20KTransaction, parameter=list(support = 0.01, target="frequent itemsets"))
+freqItemset75K <- apriori(tr75KTransaction, parameter=list(support = 0.01, target="frequent itemsets"))
+
+inspect(sort(freqItemset1K, decreasing = TRUE, by="support"))
+inspect(sort(freqItemset5K, decreasing = TRUE, by="support"))
+inspect(sort(freqItemset20K, decreasing = TRUE, by="support"))
+inspect(sort(freqItemset75K, decreasing = TRUE, by="support"))
+  
+rules1K <- apriori(tr1KTransaction, parameter = list(support = 0.01))
+rules5K <- apriori(tr5KTransaction, parameter = list(support = 0.01))
+rules20K <- apriori(tr20KTransaction, parameter = list(support = 0.01))
+rules75K <- apriori(tr75KTransaction, parameter = list(support = 0.01))
+
+inspect(rules1K, by = "confidence")
+inspect(rules5K, by = "confidence")
+inspect(rules20K, by = "confidence")
+inspect(rules75K, by = "confidence")
+
+```
+
+### 2.1 - C
+```{r}
+# The rules generated from all data set differ from each other. 
+# The reason for this is the support and confidence for each item set vary in the individual data set due to the transaction count. 
+```
+
+
+### 2.1 - D - i
+```{r}	
+# The most frequently purchased item is Coffee Eclair
+```
+
+### 2.1 - D - ii
+```{r}
+# The least frequent purchased items are {Apple Croissant, Apple Danish, Apple Tart, Cherry Soda}. 
+```
+
+### 2.2 Recommender Systems
+```{r}
+library(lsa)
+
+# userid <- 20489131 %% 671 = 146
+userid <- 146
+paste("User Id is  ", userid)
+
+moviesData <- read.csv("movies.csv", header = TRUE, sep = ",")
+userData <- read.csv("ratings.csv", header = TRUE, sep = ",")
+
+user146 <- subset(userData,userData$userId == userid)
+
+genres <- c("Action","Adventure","Animation","Children","Comedy","Crime","Documentary","Drama","Fantasy","Film-Noir","Horror","IMAX","Musical","Mystery","Romance","Sci-Fi","Thriller","War","Western","(no genres listed)")
+
+user146Profile <- matrix(as.numeric(0), nrow = nrow(user146) + 1, ncol = length(genres) + 1)
+
+colnames(user146Profile) <- c("Movie ID", genres)
+
+moviesList146 <- moviesData[which(moviesData$movieId %in% user146$movieId),]
+
+get_MovieGenres <- function(ID){
+    gen <- subset(moviesData, moviesData$movieId == ID)[1,3]
+    return(strsplit(gen, split = "[|]"))
+}
+
+for(i in 1:(nrow(user146Profile) - 1)){
+  user146Profile[i, 1] <- moviesList146[i, 1]
+  gen_list <- get_MovieGenres(moviesList146[i, 1])
+  for(item in gen_list){
+    user146Profile[i, item] <- as.numeric(1)
+  }
+}
+
+user146Profile[nrow(user146Profile), 1] <- "AVG"
+for(j in 2:ncol(user146Profile)){
+  user146Profile[nrow(user146Profile), j] <- round(mean(as.numeric(user146Profile[1:nrow(user146Profile) - 1, j])), 4)
+}
+
+rownames(user146Profile) <- NULL
+write.csv(user146Profile, "user146Profile.csv")
+
+movieProfile <- matrix(as.numeric(0), nrow = nrow(moviesData), ncol = length(genres)+1)
+colnames(movieProfile) <- c("Movie ID", genres)
+
+for(i in 1:nrow(moviesData)){
+  movieProfile[i, 1] <- moviesData[i, 1]
+  gen_list_m <-get_MovieGenres(moviesData[i, 1])
+  for(item in gen_list_m){
+    movieProfile[i, item] <- as.numeric(1)    
+  }
+}
+
+
+rownames(movieProfile) <- NULL
+write.csv(movieProfile, "movieProfile.csv")
+
+
+set.seed(1122)
+randomdata <- sample(1:nrow(moviesData), 10, replace = FALSE)
+movieSample <- movieProfile[randomdata, ]
+print(data.frame(movieSample))
+
+
+userVector <- as.numeric(user146Profile[nrow(user146Profile), 2: ncol(user146Profile)])
+
+
+cosine_result <- c()
+movieID <- c()
+movie_title <- c()
+
+for(i in 1:10){
+  movieID <- append(movieID, as.numeric(movieSample[i, 1]))
+  movie_title <- append(movie_title, moviesData[which(moviesData$movieId == as.numeric(movieSample[i, 1])), 2])
+  movieVector <- as.numeric(movieSample[i, 2:ncol(movieSample)])
+  cosine_result <- append(cosine_result,round(cosine(userVector, movieVector), 4))
+}
+
+
+lastResult <- data.frame(cbind(movieID, movie_title, cosine_result))
+colnames(lastResult) <- c("MovieId", "MovieName","Similarity")
+
+
+lastResult <- lastResult[order(lastResult[,3], decreasing = TRUE), ]
+
+
+cat(paste0(c("User ID ", userid, " choose the following 10 movies: ", as.character(movieID),"\nOf these, the following 5 movies are recommended:\n"), collapse=" "))  
+print(head(lastResult, 5))
+
+```
